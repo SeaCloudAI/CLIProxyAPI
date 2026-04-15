@@ -24,7 +24,7 @@ steps:
           echo "seaart-seacloud-dev" > /workspace/env_project
           echo "seacloud-develop-us-central1" > /workspace/env_cluster
           echo "us-central1" > /workspace/env_region
-          echo "folkos-develop" > /workspace/env_namespace
+          echo "base-installation-develop" > /workspace/env_namespace
           echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/folkos" > /workspace/env_registry
           echo "cli-proxy-api" > /workspace/env_image_name
           echo "prod" > /workspace/env_name
@@ -32,7 +32,7 @@ steps:
           echo "seaart-seacloud-dev" > /workspace/env_project
           echo "seacloud-develop-us-central1" > /workspace/env_cluster
           echo "us-central1" > /workspace/env_region
-          echo "folkos-develop" > /workspace/env_namespace
+          echo "base-installation-develop" > /workspace/env_namespace
           echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/folkos" > /workspace/env_registry
           echo "cli-proxy-api" > /workspace/env_image_name
           echo "develop" > /workspace/env_name
