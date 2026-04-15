@@ -110,9 +110,29 @@ steps:
           APP_ENV=$${ENV_NAME} \
           -n $${NAMESPACE}
 
-        kubectl rollout status deployment/${_DEPLOYMENT_NAME} \
+        if ! kubectl rollout status deployment/${_DEPLOYMENT_NAME} \
           -n $${NAMESPACE} \
-          --timeout=300s
+          --timeout=600s; then
+          echo "=== deployment ==="
+          kubectl describe deployment/${_DEPLOYMENT_NAME} -n $${NAMESPACE} || true
+
+          echo "=== replicasets ==="
+          kubectl get rs -n $${NAMESPACE} | grep ${_DEPLOYMENT_NAME} || true
+
+          echo "=== pods ==="
+          kubectl get pods -n $${NAMESPACE} -o wide | grep ${_DEPLOYMENT_NAME} || true
+
+          echo "=== pod describe ==="
+          POD_NAME=$$(kubectl get pods -n $${NAMESPACE} -o name | grep ${_DEPLOYMENT_NAME} | head -n 1 | cut -d/ -f2)
+          if [ -n "$${POD_NAME}" ]; then
+            kubectl describe pod "$${POD_NAME}" -n $${NAMESPACE} || true
+            echo "=== pod logs ==="
+            kubectl logs "$${POD_NAME}" -n $${NAMESPACE} --tail=200 || true
+            echo "=== previous logs ==="
+            kubectl logs "$${POD_NAME}" -n $${NAMESPACE} --tail=200 --previous || true
+          fi
+          exit 1
+        fi
     waitFor: ["push-image"]
 
 substitutions:
