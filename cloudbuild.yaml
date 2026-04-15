@@ -25,16 +25,16 @@ steps:
           echo "seacloud-develop-us-central1" > /workspace/env_cluster
           echo "us-central1" > /workspace/env_region
           echo "base-installation-develop" > /workspace/env_namespace
-          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/folkos" > /workspace/env_registry
-          echo "cli-proxy-api" > /workspace/env_image_name
+          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/seacloud-develop" > /workspace/env_registry
+          echo "seacloud-cli-proxy-api" > /workspace/env_image_name
           echo "prod" > /workspace/env_name
         else
           echo "seaart-seacloud-dev" > /workspace/env_project
           echo "seacloud-develop-us-central1" > /workspace/env_cluster
           echo "us-central1" > /workspace/env_region
           echo "base-installation-develop" > /workspace/env_namespace
-          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/folkos" > /workspace/env_registry
-          echo "cli-proxy-api" > /workspace/env_image_name
+          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/seacloud-develop" > /workspace/env_registry
+          echo "seacloud-cli-proxy-api" > /workspace/env_image_name
           echo "develop" > /workspace/env_name
         fi
 
@@ -116,8 +116,8 @@ steps:
     waitFor: ["push-image"]
 
 substitutions:
-  _DEPLOYMENT_NAME: "cli-proxy-api"
-  _CONTAINER_NAME: "cli-proxy-api"
+  _DEPLOYMENT_NAME: "seacloud-cli-proxy-api"
+  _CONTAINER_NAME: "seacloud-cli-proxy-api"
 
 options:
   machineType: "E2_HIGHCPU_32"
@@ -130,5 +130,5 @@ options:
 timeout: "2400s"
 
 tags:
-  - "cli-proxy-api"
+  - "seacloud-cli-proxy-api"
   - "automated-build"
