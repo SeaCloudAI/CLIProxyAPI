@@ -32,7 +32,7 @@ COPY config.example.yaml /app/config/config.yaml
 
 WORKDIR /CLIProxyAPI
 
-EXPOSE 8317
+EXPOSE 8080
 
 ENV TZ=Asia/Shanghai
 
