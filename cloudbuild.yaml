@@ -1,9 +1,5 @@
-# Google Cloud Build configuration for CLIProxyAPI
-# Environment target follows folkos-message:
-#   - project: seaart-seacloud-dev
-#   - cluster: seacloud-develop-us-central1
-#   - region: us-central1
-#   - namespace: folkos-develop
+# Google Cloud Build configuration for CLIProxyAPI.
+# Target project/cluster/region/namespace follows folkos-message.
 
 steps:
   - name: "gcr.io/cloud-builders/git"
@@ -101,21 +97,18 @@ steps:
         IMAGE_NAME=$$(cat /workspace/env_image_name)
         IMAGE_TAG=$$(cat /workspace/image_tag)
         ENV_NAME=$$(cat /workspace/env_name)
-        IMAGE_URI="$${REGISTRY}/$${IMAGE_NAME}:$${IMAGE_TAG}"
 
         gcloud container clusters get-credentials $${CLUSTER} \
           --region=$${REGION} \
           --project=$${PROJECT}
 
-        kubectl get namespace $${NAMESPACE} >/dev/null 2>&1 || kubectl create namespace $${NAMESPACE}
+        kubectl set image deployment/${_DEPLOYMENT_NAME} \
+          ${_CONTAINER_NAME}=$${REGISTRY}/$${IMAGE_NAME}:$${IMAGE_TAG} \
+          -n $${NAMESPACE}
 
-        kubectl apply -n $${NAMESPACE} -f deploy/k8s/configmap.yaml
-        kubectl apply -n $${NAMESPACE} -f deploy/k8s/service.yaml
-
-        sed \
-          -e "s|__IMAGE__|$${IMAGE_URI}|g" \
-          -e "s|__APP_ENV__|$${ENV_NAME}|g" \
-          deploy/k8s/deployment.yaml | kubectl apply -n $${NAMESPACE} -f -
+        kubectl set env deployment/${_DEPLOYMENT_NAME} \
+          APP_ENV=$${ENV_NAME} \
+          -n $${NAMESPACE}
 
         kubectl rollout status deployment/${_DEPLOYMENT_NAME} \
           -n $${NAMESPACE} \
@@ -124,6 +117,7 @@ steps:
 
 substitutions:
   _DEPLOYMENT_NAME: "cli-proxy-api"
+  _CONTAINER_NAME: "cli-proxy-api"
 
 options:
   machineType: "E2_HIGHCPU_32"
