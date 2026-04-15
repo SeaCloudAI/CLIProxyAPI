@@ -21,20 +21,20 @@ steps:
         echo "$${COMMIT_AUTHOR}" > /workspace/commit_author
 
         if [ "${BRANCH_NAME}" = "release" ]; then
-          echo "seaart-seacloud-dev" > /workspace/env_project
-          echo "seacloud-develop-us-central1" > /workspace/env_cluster
+          echo "seaart-seacloud-prod" > /workspace/env_project
+          echo "seacloud-release-us-central1" > /workspace/env_cluster
           echo "us-central1" > /workspace/env_region
-          echo "folkos-develop" > /workspace/env_namespace
-          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/folkos" > /workspace/env_registry
-          echo "cli-proxy-api" > /workspace/env_image_name
+          echo "base-installation-release" > /workspace/env_namespace
+          echo "us-central1-docker.pkg.dev/seaart-seacloud-prod/seacloud-release" > /workspace/env_registry
+          echo "seacloud-cli-proxy-api" > /workspace/env_image_name
           echo "prod" > /workspace/env_name
         else
           echo "seaart-seacloud-dev" > /workspace/env_project
           echo "seacloud-develop-us-central1" > /workspace/env_cluster
           echo "us-central1" > /workspace/env_region
-          echo "folkos-develop" > /workspace/env_namespace
-          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/folkos" > /workspace/env_registry
-          echo "cli-proxy-api" > /workspace/env_image_name
+          echo "base-installation-develop" > /workspace/env_namespace
+          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/seacloud-develop" > /workspace/env_registry
+          echo "seacloud-cli-proxy-api" > /workspace/env_image_name
           echo "develop" > /workspace/env_name
         fi
 
@@ -110,14 +110,34 @@ steps:
           APP_ENV=$${ENV_NAME} \
           -n $${NAMESPACE}
 
-        kubectl rollout status deployment/${_DEPLOYMENT_NAME} \
+        if ! kubectl rollout status deployment/${_DEPLOYMENT_NAME} \
           -n $${NAMESPACE} \
-          --timeout=300s
+          --timeout=600s; then
+          echo "=== deployment ==="
+          kubectl describe deployment/${_DEPLOYMENT_NAME} -n $${NAMESPACE} || true
+
+          echo "=== replicasets ==="
+          kubectl get rs -n $${NAMESPACE} | grep ${_DEPLOYMENT_NAME} || true
+
+          echo "=== pods ==="
+          kubectl get pods -n $${NAMESPACE} -o wide | grep ${_DEPLOYMENT_NAME} || true
+
+          echo "=== pod describe ==="
+          POD_NAME=$$(kubectl get pods -n $${NAMESPACE} -o name | grep ${_DEPLOYMENT_NAME} | head -n 1 | cut -d/ -f2)
+          if [ -n "$${POD_NAME}" ]; then
+            kubectl describe pod "$${POD_NAME}" -n $${NAMESPACE} || true
+            echo "=== pod logs ==="
+            kubectl logs "$${POD_NAME}" -n $${NAMESPACE} --tail=200 || true
+            echo "=== previous logs ==="
+            kubectl logs "$${POD_NAME}" -n $${NAMESPACE} --tail=200 --previous || true
+          fi
+          exit 1
+        fi
     waitFor: ["push-image"]
 
 substitutions:
-  _DEPLOYMENT_NAME: "cli-proxy-api"
-  _CONTAINER_NAME: "cli-proxy-api"
+  _DEPLOYMENT_NAME: "seacloud-cli-proxy-api"
+  _CONTAINER_NAME: "seacloud-cli-proxy-api"
 
 options:
   machineType: "E2_HIGHCPU_32"
@@ -130,5 +150,5 @@ options:
 timeout: "2400s"
 
 tags:
-  - "cli-proxy-api"
+  - "seacloud-cli-proxy-api"
   - "automated-build"
