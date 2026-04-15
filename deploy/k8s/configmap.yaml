@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cli-proxy-api-config
+data:
+  config.yaml: |
+    host: "0.0.0.0"
+    port: 8317
+
+    tls:
+      enable: false
+      cert: ""
+      key: ""
+
+    remote-management:
+      allow-remote: false
+      secret-key: ""
+      disable-control-panel: false
+      panel-github-repository: "https://github.com/router-for-me/Cli-Proxy-API-Management-Center"
+
+    auth-dir: "/var/lib/cli-proxy-api/auth"
+
+    # Replace this before exposing the service outside the cluster.
+    api-keys:
+      - "change-me"
+
+    debug: false
+    logging-to-file: false
+    usage-statistics-enabled: false
+    force-model-prefix: false
+    passthrough-headers: false
+    request-retry: 3
+    max-retry-credentials: 0
+    max-retry-interval: 30
+    disable-cooling: false
+    proxy-url: ""
+
+    quota-exceeded:
+      switch-project: true
+      switch-preview-model: true
+      antigravity-credits: true
+
+    routing:
+      strategy: "round-robin"
+
+    ws-auth: false
+    enable-gemini-cli-endpoint: false
+    nonstream-keepalive-interval: 0

@@ -1,0 +1,140 @@
+# Google Cloud Build configuration for CLIProxyAPI
+# Environment target follows folkos-message:
+#   - project: seaart-seacloud-dev
+#   - cluster: seacloud-develop-us-central1
+#   - region: us-central1
+#   - namespace: folkos-develop
+
+steps:
+  - name: "gcr.io/cloud-builders/git"
+    id: "prepare-metadata"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        date +%s > /workspace/start_time
+
+        TIMESTAMP=$$(TZ=Asia/Shanghai date '+%Y%m%d-%H%M%S')
+        IMAGE_TAG="${SHORT_SHA}-$${TIMESTAMP}"
+        echo "$${IMAGE_TAG}" > /workspace/image_tag
+
+        COMMIT_MESSAGE=$$(git log -1 --format='%s' 2>/dev/null || echo "自动构建")
+        COMMIT_AUTHOR=$$(git log -1 --format='%an' 2>/dev/null || echo "System")
+        COMMIT_MESSAGE=$$(python3 -c "import sys; m=sys.argv[1]; print(m[:47]+'...' if len(m)>50 else m, end='')" "$$COMMIT_MESSAGE")
+        echo "$${COMMIT_MESSAGE}" > /workspace/commit_message
+        echo "$${COMMIT_AUTHOR}" > /workspace/commit_author
+
+        if [ "${BRANCH_NAME}" = "release" ]; then
+          echo "seaart-seacloud-dev" > /workspace/env_project
+          echo "seacloud-develop-us-central1" > /workspace/env_cluster
+          echo "us-central1" > /workspace/env_region
+          echo "folkos-develop" > /workspace/env_namespace
+          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/folkos" > /workspace/env_registry
+          echo "cli-proxy-api" > /workspace/env_image_name
+          echo "prod" > /workspace/env_name
+        else
+          echo "seaart-seacloud-dev" > /workspace/env_project
+          echo "seacloud-develop-us-central1" > /workspace/env_cluster
+          echo "us-central1" > /workspace/env_region
+          echo "folkos-develop" > /workspace/env_namespace
+          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/folkos" > /workspace/env_registry
+          echo "cli-proxy-api" > /workspace/env_image_name
+          echo "develop" > /workspace/env_name
+        fi
+
+        echo "Commit: $${COMMIT_AUTHOR} / $${COMMIT_MESSAGE}"
+        echo "Image Tag: $${IMAGE_TAG}"
+        echo "Project: $$(cat /workspace/env_project)"
+        echo "Cluster: $$(cat /workspace/env_cluster)"
+        echo "Region: $$(cat /workspace/env_region)"
+        echo "Namespace: $$(cat /workspace/env_namespace)"
+        echo "Registry: $$(cat /workspace/env_registry)"
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: "build-image"
+    entrypoint: "bash"
+    env:
+      - "DOCKER_BUILDKIT=1"
+    args:
+      - "-c"
+      - |
+        REGISTRY=$$(cat /workspace/env_registry)
+        IMAGE_NAME=$$(cat /workspace/env_image_name)
+        IMAGE_TAG=$$(cat /workspace/image_tag)
+
+        docker build \
+          -t $${REGISTRY}/$${IMAGE_NAME}:$${IMAGE_TAG} \
+          -t $${REGISTRY}/$${IMAGE_NAME}:${SHORT_SHA} \
+          -t $${REGISTRY}/$${IMAGE_NAME}:latest \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
+          --build-arg VERSION=${SHORT_SHA} \
+          --build-arg COMMIT=${COMMIT_SHA} \
+          --build-arg BUILD_DATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+          --cache-from $${REGISTRY}/$${IMAGE_NAME}:latest \
+          -f Dockerfile \
+          .
+    timeout: 1800s
+    waitFor: ["prepare-metadata"]
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: "push-image"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        REGISTRY=$$(cat /workspace/env_registry)
+        IMAGE_NAME=$$(cat /workspace/env_image_name)
+        docker push --all-tags $${REGISTRY}/$${IMAGE_NAME}
+    waitFor: ["build-image"]
+
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: "deploy-to-gke"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        PROJECT=$$(cat /workspace/env_project)
+        CLUSTER=$$(cat /workspace/env_cluster)
+        REGION=$$(cat /workspace/env_region)
+        NAMESPACE=$$(cat /workspace/env_namespace)
+        REGISTRY=$$(cat /workspace/env_registry)
+        IMAGE_NAME=$$(cat /workspace/env_image_name)
+        IMAGE_TAG=$$(cat /workspace/image_tag)
+        ENV_NAME=$$(cat /workspace/env_name)
+        IMAGE_URI="$${REGISTRY}/$${IMAGE_NAME}:$${IMAGE_TAG}"
+
+        gcloud container clusters get-credentials $${CLUSTER} \
+          --region=$${REGION} \
+          --project=$${PROJECT}
+
+        kubectl get namespace $${NAMESPACE} >/dev/null 2>&1 || kubectl create namespace $${NAMESPACE}
+
+        kubectl apply -n $${NAMESPACE} -f deploy/k8s/configmap.yaml
+        kubectl apply -n $${NAMESPACE} -f deploy/k8s/service.yaml
+
+        sed \
+          -e "s|__IMAGE__|$${IMAGE_URI}|g" \
+          -e "s|__APP_ENV__|$${ENV_NAME}|g" \
+          deploy/k8s/deployment.yaml | kubectl apply -n $${NAMESPACE} -f -
+
+        kubectl rollout status deployment/${_DEPLOYMENT_NAME} \
+          -n $${NAMESPACE} \
+          --timeout=300s
+    waitFor: ["push-image"]
+
+substitutions:
+  _DEPLOYMENT_NAME: "cli-proxy-api"
+
+options:
+  machineType: "E2_HIGHCPU_32"
+  diskSizeGb: 200
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: "ALLOW_LOOSE"
+  env:
+    - DOCKER_BUILDKIT=1
+
+timeout: "2400s"
+
+tags:
+  - "cli-proxy-api"
+  - "automated-build"
