@@ -25,6 +25,8 @@ COPY --from=builder ./app/CLIProxyAPI /app/bin/seacloud-cli-proxy-api
 
 COPY config.example.yaml /CLIProxyAPI/config.example.yaml
 COPY config.example.yaml /CLIProxyAPI/config.yaml
+COPY config.example.yaml /app/bin/config.example.yaml
+COPY config.example.yaml /app/bin/config.yaml
 COPY config.example.yaml /app/config/config.example.yaml
 COPY config.example.yaml /app/config/config.yaml
 
