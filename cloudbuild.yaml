@@ -21,11 +21,11 @@ steps:
         echo "$${COMMIT_AUTHOR}" > /workspace/commit_author
 
         if [ "${BRANCH_NAME}" = "release" ]; then
-          echo "seaart-seacloud-dev" > /workspace/env_project
-          echo "seacloud-develop-us-central1" > /workspace/env_cluster
+          echo "seaart-seacloud-prod" > /workspace/env_project
+          echo "seacloud-release-us-central1" > /workspace/env_cluster
           echo "us-central1" > /workspace/env_region
-          echo "base-installation-develop" > /workspace/env_namespace
-          echo "us-central1-docker.pkg.dev/seaart-seacloud-dev/seacloud-develop" > /workspace/env_registry
+          echo "base-installation-release" > /workspace/env_namespace
+          echo "us-central1-docker.pkg.dev/seaart-seacloud-prod/seacloud-release" > /workspace/env_registry
           echo "seacloud-cli-proxy-api" > /workspace/env_image_name
           echo "prod" > /workspace/env_name
         else
