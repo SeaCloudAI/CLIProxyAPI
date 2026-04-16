@@ -22,7 +22,7 @@ steps:
 
         if [ "${BRANCH_NAME}" = "release" ]; then
           echo "seaart-seacloud-prod" > /workspace/env_project
-          echo "seacloud-release-us-central1" > /workspace/env_cluster
+          echo "seacloud-production-us-central1" > /workspace/env_cluster
           echo "us-central1" > /workspace/env_region
           echo "base-installation-release" > /workspace/env_namespace
           echo "us-central1-docker.pkg.dev/seaart-seacloud-prod/seacloud-release" > /workspace/env_registry
