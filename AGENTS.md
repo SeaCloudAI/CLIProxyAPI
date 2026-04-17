@@ -22,6 +22,53 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 - Auth material defaults under `auths/`
 - Storage backends: file-based default; optional Postgres/git/object store (`PGSTORE_*`, `GITSTORE_*`, `OBJECTSTORE_*`)
 
+## Deploy
+- Develop domain: `https://seacloud-cli-proxy-api.cloud.seaart.dev`
+- Verified on 2026-04-15:
+  - `GET /health` returns `200 {"status":"ok"}`
+  - `GET /healthz` returns `200 {"status":"ok"}`
+  - `GET /v1/models` without API key returns `401 {"error":"Missing API key"}`
+
+```bash
+curl -sS -i https://seacloud-cli-proxy-api.cloud.seaart.dev/health
+curl -sS -i https://seacloud-cli-proxy-api.cloud.seaart.dev/healthz
+curl -sS -i https://seacloud-cli-proxy-api.cloud.seaart.dev/v1/models
+```
+
+## Loki Logs
+- Base URL: `http://loki-gateway.us-central1.ops.vtrix.dev`
+- Main cluster auth: `-u "seacloud-develop-us-central1:BbcHQmdfbZLtcYUMkzlv16vM9wArTAdO"`
+- Deployment namespace: `base-installation-develop`
+- Container / app / service name: `seacloud-cli-proxy-api`
+- Current deployment logs are visible in Loki with labels such as `namespace="base-installation-develop"` and `container="seacloud-cli-proxy-api"`
+
+```bash
+# List available containers on the main cluster
+curl -s "http://loki-gateway.us-central1.ops.vtrix.dev/loki/api/v1/label/container/values" \
+  -u "seacloud-develop-us-central1:BbcHQmdfbZLtcYUMkzlv16vM9wArTAdO"
+
+# Query recent logs for this service
+curl -s -G "http://loki-gateway.us-central1.ops.vtrix.dev/loki/api/v1/query_range" \
+  -u "seacloud-develop-us-central1:BbcHQmdfbZLtcYUMkzlv16vM9wArTAdO" \
+  --data-urlencode 'query={namespace="base-installation-develop",container="seacloud-cli-proxy-api"}' \
+  --data-urlencode 'limit=100' \
+  --data-urlencode 'direction=backward'
+
+# Query health-check logs only
+curl -s -G "http://loki-gateway.us-central1.ops.vtrix.dev/loki/api/v1/query_range" \
+  -u "seacloud-develop-us-central1:BbcHQmdfbZLtcYUMkzlv16vM9wArTAdO" \
+  --data-urlencode 'query={namespace="base-installation-develop",container="seacloud-cli-proxy-api"} |= "/health"' \
+  --data-urlencode 'limit=100' \
+  --data-urlencode 'direction=backward'
+
+# Query errors only
+curl -s -G "http://loki-gateway.us-central1.ops.vtrix.dev/loki/api/v1/query_range" \
+  -u "seacloud-develop-us-central1:BbcHQmdfbZLtcYUMkzlv16vM9wArTAdO" \
+  --data-urlencode 'query={namespace="base-installation-develop",container="seacloud-cli-proxy-api"} |= "error"' \
+  --data-urlencode 'limit=100' \
+  --data-urlencode 'direction=backward'
+```
+
 ## Architecture
 - `cmd/server/` — Server entrypoint
 - `internal/api/` — Gin HTTP API (routes, middleware, modules)
