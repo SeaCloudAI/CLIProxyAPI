@@ -24,15 +24,21 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 
 ## Deploy
 - Develop domain: `https://seacloud-cli-proxy-api.cloud.seaart.dev`
+- Production domain: `https://seacloud-cli-proxy-api.cloud.seaart.ai`
 - Verified on 2026-04-15:
   - `GET /health` returns `200 {"status":"ok"}`
   - `GET /healthz` returns `200 {"status":"ok"}`
   - `GET /v1/models` without API key returns `401 {"error":"Missing API key"}`
+- Production verified on 2026-04-25:
+  - `GET /health` returns `200 {"status":"ok"}`
+  - `GET /v1/models` with API key returns `200` and includes `gpt-5.3-codex`
+  - `POST /v1/chat/completions` with `gpt-5.3-codex` returns `200` and the expected completion text
 
 ```bash
 curl -sS -i https://seacloud-cli-proxy-api.cloud.seaart.dev/health
 curl -sS -i https://seacloud-cli-proxy-api.cloud.seaart.dev/healthz
 curl -sS -i https://seacloud-cli-proxy-api.cloud.seaart.dev/v1/models
+curl -sS -i https://seacloud-cli-proxy-api.cloud.seaart.ai/health
 ```
 
 ## Loki Logs
