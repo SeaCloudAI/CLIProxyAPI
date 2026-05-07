@@ -18,7 +18,7 @@ FROM alpine:3.22.0
 
 RUN apk add --no-cache tzdata
 
-RUN mkdir -p /CLIProxyAPI /app/bin /app/config /root/.cli-proxy-api
+RUN mkdir -p /CLIProxyAPI /CLIProxyAPI/static /app/bin /app/config /root/.cli-proxy-api
 
 COPY --from=builder ./app/CLIProxyAPI /CLIProxyAPI/CLIProxyAPI
 COPY --from=builder ./app/CLIProxyAPI /app/bin/seacloud-cli-proxy-api
@@ -29,7 +29,10 @@ COPY config.example.yaml /app/bin/config.example.yaml
 COPY config.example.yaml /app/bin/config.yaml
 COPY config.example.yaml /app/config/config.example.yaml
 COPY config.example.yaml /app/config/config.yaml
+COPY static/management.html /CLIProxyAPI/static/management.html
 COPY docker-auth/ /root/.cli-proxy-api/
+
+ENV MANAGEMENT_STATIC_PATH=/CLIProxyAPI/static/management.html
 
 WORKDIR /CLIProxyAPI
 

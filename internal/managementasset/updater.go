@@ -96,6 +96,10 @@ func runAutoUpdater(ctx context.Context) {
 
 		configPath, _ := schedulerConfigPath.Load().(string)
 		staticDir := StaticDir(configPath)
+		if shouldSkipBundledManagementAutoUpdate(staticDir) {
+			log.Debug("management asset auto-updater skipped: bundled asset pinned for non-prod environment")
+			return
+		}
 		EnsureLatestManagementHTML(ctx, staticDir, cfg.ProxyURL, cfg.RemoteManagement.PanelGitHubRepository)
 	}
 
@@ -109,6 +113,28 @@ func runAutoUpdater(ctx context.Context) {
 			runOnce()
 		}
 	}
+}
+
+func shouldSkipBundledManagementAutoUpdate(staticDir string) bool {
+	if isProdAppEnv() {
+		return false
+	}
+
+	staticDir = strings.TrimSpace(staticDir)
+	if staticDir == "" {
+		return false
+	}
+
+	info, err := os.Stat(filepath.Join(staticDir, managementAssetName))
+	if err != nil {
+		return false
+	}
+
+	return !info.IsDir()
+}
+
+func isProdAppEnv() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "prod")
 }
 
 func newHTTPClient(proxyURL string) *http.Client {
