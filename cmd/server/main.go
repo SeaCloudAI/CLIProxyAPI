@@ -128,9 +128,7 @@ func main() {
 	var isCloudDeploy bool
 	var (
 		usePostgresStore     bool
-		pgStoreDSN           string
-		pgStoreSchema        string
-		pgStoreLocalPath     string
+		pgStoreCfg           store.PostgresStoreConfig
 		pgStoreInst          *store.PostgresStore
 		useGitStore          bool
 		gitStoreRemoteURL    string
@@ -173,24 +171,8 @@ func main() {
 		return "", false
 	}
 	writableBase := util.WritablePath()
-	if value, ok := lookupEnv("PGSTORE_DSN", "pgstore_dsn"); ok {
-		usePostgresStore = true
-		pgStoreDSN = value
-	}
+	pgStoreCfg, usePostgresStore = resolvePostgresStoreConfig(lookupEnv, wd, writableBase)
 	if usePostgresStore {
-		if value, ok := lookupEnv("PGSTORE_SCHEMA", "pgstore_schema"); ok {
-			pgStoreSchema = value
-		}
-		if value, ok := lookupEnv("PGSTORE_LOCAL_PATH", "pgstore_local_path"); ok {
-			pgStoreLocalPath = value
-		}
-		if pgStoreLocalPath == "" {
-			if writableBase != "" {
-				pgStoreLocalPath = writableBase
-			} else {
-				pgStoreLocalPath = wd
-			}
-		}
 		useGitStore = false
 	}
 	if value, ok := lookupEnv("GITSTORE_GIT_URL", "gitstore_git_url"); ok {
@@ -237,16 +219,12 @@ func main() {
 	// Prefer the Postgres store when configured, otherwise fallback to git or local files.
 	var configFilePath string
 	if usePostgresStore {
-		if pgStoreLocalPath == "" {
-			pgStoreLocalPath = wd
+		if pgStoreCfg.SpoolDir == "" {
+			pgStoreCfg.SpoolDir = wd
 		}
-		pgStoreLocalPath = filepath.Join(pgStoreLocalPath, "pgstore")
+		pgStoreCfg.SpoolDir = filepath.Join(pgStoreCfg.SpoolDir, "pgstore")
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		pgStoreInst, err = store.NewPostgresStore(ctx, store.PostgresStoreConfig{
-			DSN:      pgStoreDSN,
-			Schema:   pgStoreSchema,
-			SpoolDir: pgStoreLocalPath,
-		})
+		pgStoreInst, err = store.NewPostgresStore(ctx, pgStoreCfg)
 		cancel()
 		if err != nil {
 			log.Errorf("failed to initialize postgres token store: %v", err)
