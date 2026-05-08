@@ -1,6 +1,7 @@
 package management
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -65,6 +66,13 @@ func (h *Handler) ImportUsageStatistics(c *gin.Context) {
 	}
 	if payload.Version != 0 && payload.Version != 1 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported version"})
+		return
+	}
+
+	persistCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := usage.PersistSnapshot(persistCtx, payload.Usage); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist usage statistics"})
 		return
 	}
 

@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/misc"
+	internalusage "github.com/router-for-me/CLIProxyAPI/v6/internal/usage"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 	log "github.com/sirupsen/logrus"
 )
@@ -22,6 +23,7 @@ import (
 const (
 	defaultConfigTable = "config_store"
 	defaultAuthTable   = "auth_store"
+	defaultUsageTable  = "usage_store"
 	defaultConfigKey   = "config"
 )
 
@@ -31,6 +33,7 @@ type PostgresStoreConfig struct {
 	Schema      string
 	ConfigTable string
 	AuthTable   string
+	UsageTable  string
 	SpoolDir    string
 }
 
@@ -57,6 +60,9 @@ func NewPostgresStore(ctx context.Context, cfg PostgresStoreConfig) (*PostgresSt
 	}
 	if cfg.AuthTable == "" {
 		cfg.AuthTable = defaultAuthTable
+	}
+	if cfg.UsageTable == "" {
+		cfg.UsageTable = defaultUsageTable
 	}
 
 	spoolRoot := strings.TrimSpace(cfg.SpoolDir)
@@ -139,6 +145,27 @@ func (s *PostgresStore) EnsureSchema(ctx context.Context) error {
 		)
 	`, authTable)); err != nil {
 		return fmt.Errorf("postgres store: create auth table: %w", err)
+	}
+	usageTable := s.fullTableName(s.cfg.UsageTable)
+	if _, err := s.db.ExecContext(ctx, fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
+			id TEXT PRIMARY KEY,
+			api_name TEXT NOT NULL,
+			model_name TEXT NOT NULL,
+			requested_at TIMESTAMPTZ NOT NULL,
+			latency_ms BIGINT NOT NULL DEFAULT 0,
+			source TEXT NOT NULL DEFAULT '',
+			auth_index TEXT NOT NULL DEFAULT '',
+			failed BOOLEAN NOT NULL DEFAULT FALSE,
+			input_tokens BIGINT NOT NULL DEFAULT 0,
+			output_tokens BIGINT NOT NULL DEFAULT 0,
+			reasoning_tokens BIGINT NOT NULL DEFAULT 0,
+			cached_tokens BIGINT NOT NULL DEFAULT 0,
+			total_tokens BIGINT NOT NULL DEFAULT 0,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`, usageTable)); err != nil {
+		return fmt.Errorf("postgres store: create usage table: %w", err)
 	}
 	return nil
 }
@@ -390,6 +417,164 @@ func (s *PostgresStore) PersistConfig(ctx context.Context) error {
 		return fmt.Errorf("postgres store: read config file: %w", err)
 	}
 	return s.persistConfig(ctx, data)
+}
+
+// LoadRecords returns persisted usage records ordered by request timestamp.
+func (s *PostgresStore) LoadRecords(ctx context.Context) ([]internalusage.PersistentRecord, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	query := fmt.Sprintf(`
+		SELECT
+			id,
+			api_name,
+			model_name,
+			requested_at,
+			latency_ms,
+			source,
+			auth_index,
+			failed,
+			input_tokens,
+			output_tokens,
+			reasoning_tokens,
+			cached_tokens,
+			total_tokens
+		FROM %s
+		ORDER BY requested_at ASC, id ASC
+	`, s.fullTableName(s.cfg.UsageTable))
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("postgres store: load usage records: %w", err)
+	}
+	defer rows.Close()
+
+	records := make([]internalusage.PersistentRecord, 0, 128)
+	for rows.Next() {
+		record := internalusage.PersistentRecord{}
+		if err := rows.Scan(
+			&record.ID,
+			&record.APIName,
+			&record.ModelName,
+			&record.Detail.Timestamp,
+			&record.Detail.LatencyMs,
+			&record.Detail.Source,
+			&record.Detail.AuthIndex,
+			&record.Detail.Failed,
+			&record.Detail.Tokens.InputTokens,
+			&record.Detail.Tokens.OutputTokens,
+			&record.Detail.Tokens.ReasoningTokens,
+			&record.Detail.Tokens.CachedTokens,
+			&record.Detail.Tokens.TotalTokens,
+		); err != nil {
+			return nil, fmt.Errorf("postgres store: scan usage row: %w", err)
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres store: iterate usage rows: %w", err)
+	}
+	return records, nil
+}
+
+// SaveRecords writes usage records into PostgreSQL and skips duplicates by stable record id.
+func (s *PostgresStore) SaveRecords(ctx context.Context, records []internalusage.PersistentRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("postgres store: begin usage transaction: %w", err)
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	const (
+		fieldsPerRow = 13
+		batchSize    = 200
+	)
+	for start := 0; start < len(records); start += batchSize {
+		end := start + batchSize
+		if end > len(records) {
+			end = len(records)
+		}
+
+		chunk := records[start:end]
+		args := make([]any, 0, len(chunk)*fieldsPerRow)
+		var builder strings.Builder
+		builder.WriteString(fmt.Sprintf(`
+			INSERT INTO %s (
+				id,
+				api_name,
+				model_name,
+				requested_at,
+				latency_ms,
+				source,
+				auth_index,
+				failed,
+				input_tokens,
+				output_tokens,
+				reasoning_tokens,
+				cached_tokens,
+				total_tokens,
+				created_at
+			)
+			VALUES
+		`, s.fullTableName(s.cfg.UsageTable)))
+		for index, record := range chunk {
+			record = internalusage.BuildPersistentRecordFromDetail(record.APIName, record.ModelName, record.Detail)
+			if index > 0 {
+				builder.WriteString(",")
+			}
+			base := index*fieldsPerRow + 1
+			builder.WriteString(fmt.Sprintf(
+				"($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, NOW())",
+				base,
+				base+1,
+				base+2,
+				base+3,
+				base+4,
+				base+5,
+				base+6,
+				base+7,
+				base+8,
+				base+9,
+				base+10,
+				base+11,
+				base+12,
+			))
+			args = append(
+				args,
+				record.ID,
+				record.APIName,
+				record.ModelName,
+				record.Detail.Timestamp,
+				record.Detail.LatencyMs,
+				record.Detail.Source,
+				record.Detail.AuthIndex,
+				record.Detail.Failed,
+				record.Detail.Tokens.InputTokens,
+				record.Detail.Tokens.OutputTokens,
+				record.Detail.Tokens.ReasoningTokens,
+				record.Detail.Tokens.CachedTokens,
+				record.Detail.Tokens.TotalTokens,
+			)
+		}
+		builder.WriteString(" ON CONFLICT (id) DO NOTHING")
+		if _, err := tx.ExecContext(ctx, builder.String(), args...); err != nil {
+			return fmt.Errorf("postgres store: insert usage record batch: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("postgres store: commit usage transaction: %w", err)
+	}
+	tx = nil
+	return nil
 }
 
 // syncConfigFromDatabase writes the database-stored config to disk or seeds the database from template.

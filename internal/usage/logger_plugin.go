@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	coreusage "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/usage"
+	log "github.com/sirupsen/logrus"
 )
 
 var statisticsEnabled atomic.Bool
@@ -47,7 +48,13 @@ func (p *LoggerPlugin) HandleUsage(ctx context.Context, record coreusage.Record)
 	if p == nil || p.stats == nil {
 		return
 	}
-	p.stats.Record(ctx, record)
+	persistent := BuildPersistentRecord(ctx, record)
+	p.stats.RecordPersistent(persistent)
+	persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := StorePersistentRecords(persistCtx, []PersistentRecord{persistent}); err != nil {
+		log.Errorf("usage: persist record: %v", err)
+	}
 }
 
 // SetStatisticsEnabled toggles whether in-memory statistics are recorded.
@@ -159,57 +166,17 @@ func (s *RequestStatistics) Record(ctx context.Context, record coreusage.Record)
 	if !statisticsEnabled.Load() {
 		return
 	}
-	timestamp := record.RequestedAt
-	if timestamp.IsZero() {
-		timestamp = time.Now()
-	}
-	detail := normaliseDetail(record.Detail)
-	totalTokens := detail.TotalTokens
-	statsKey := record.APIKey
-	if statsKey == "" {
-		statsKey = resolveAPIIdentifier(ctx, record)
-	}
-	failed := record.Failed
-	if !failed {
-		failed = !resolveSuccess(ctx)
-	}
-	success := !failed
-	modelName := record.Model
-	if modelName == "" {
-		modelName = "unknown"
-	}
-	dayKey := timestamp.Format("2006-01-02")
-	hourKey := timestamp.Hour()
+	s.RecordPersistent(BuildPersistentRecord(ctx, record))
+}
 
+// RecordPersistent adds a normalized persistent record into the in-memory aggregates.
+func (s *RequestStatistics) RecordPersistent(record PersistentRecord) {
+	if s == nil {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	s.totalRequests++
-	if success {
-		s.successCount++
-	} else {
-		s.failureCount++
-	}
-	s.totalTokens += totalTokens
-
-	stats, ok := s.apis[statsKey]
-	if !ok {
-		stats = &apiStats{Models: make(map[string]*modelStats)}
-		s.apis[statsKey] = stats
-	}
-	s.updateAPIStats(stats, modelName, RequestDetail{
-		Timestamp: timestamp,
-		LatencyMs: normaliseLatency(record.Latency),
-		Source:    record.Source,
-		AuthIndex: record.AuthIndex,
-		Tokens:    detail,
-		Failed:    failed,
-	})
-
-	s.requestsByDay[dayKey]++
-	s.requestsByHour[hourKey]++
-	s.tokensByDay[dayKey] += totalTokens
-	s.tokensByHour[hourKey] += totalTokens
+	s.recordPersistentLocked(normalisePersistentRecord(record))
 }
 
 func (s *RequestStatistics) updateAPIStats(stats *apiStats, model string, detail RequestDetail) {
@@ -310,7 +277,7 @@ func (s *RequestStatistics) MergeSnapshot(snapshot StatisticsSnapshot) MergeResu
 				continue
 			}
 			for _, detail := range modelStatsValue.Details {
-				seen[dedupKey(apiName, modelName, detail)] = struct{}{}
+				seen[BuildPersistentRecordFromDetail(apiName, modelName, detail).ID] = struct{}{}
 			}
 		}
 	}
@@ -320,33 +287,19 @@ func (s *RequestStatistics) MergeSnapshot(snapshot StatisticsSnapshot) MergeResu
 		if apiName == "" {
 			continue
 		}
-		stats, ok := s.apis[apiName]
-		if !ok || stats == nil {
-			stats = &apiStats{Models: make(map[string]*modelStats)}
-			s.apis[apiName] = stats
-		} else if stats.Models == nil {
-			stats.Models = make(map[string]*modelStats)
-		}
 		for modelName, modelSnapshot := range apiSnapshot.Models {
 			modelName = strings.TrimSpace(modelName)
 			if modelName == "" {
 				modelName = "unknown"
 			}
 			for _, detail := range modelSnapshot.Details {
-				detail.Tokens = normaliseTokenStats(detail.Tokens)
-				if detail.LatencyMs < 0 {
-					detail.LatencyMs = 0
-				}
-				if detail.Timestamp.IsZero() {
-					detail.Timestamp = time.Now()
-				}
-				key := dedupKey(apiName, modelName, detail)
-				if _, exists := seen[key]; exists {
+				record := BuildPersistentRecordFromDetail(apiName, modelName, detail)
+				if _, exists := seen[record.ID]; exists {
 					result.Skipped++
 					continue
 				}
-				seen[key] = struct{}{}
-				s.recordImported(apiName, modelName, stats, detail)
+				seen[record.ID] = struct{}{}
+				s.recordPersistentLocked(record)
 				result.Added++
 			}
 		}
@@ -355,24 +308,54 @@ func (s *RequestStatistics) MergeSnapshot(snapshot StatisticsSnapshot) MergeResu
 	return result
 }
 
-func (s *RequestStatistics) recordImported(apiName, modelName string, stats *apiStats, detail RequestDetail) {
-	totalTokens := detail.Tokens.TotalTokens
+// ReplaceWithRecords clears the current snapshot and rebuilds it from persisted records.
+func (s *RequestStatistics) ReplaceWithRecords(records []PersistentRecord) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resetLocked()
+	for _, record := range records {
+		s.recordPersistentLocked(normalisePersistentRecord(record))
+	}
+}
+
+func (s *RequestStatistics) resetLocked() {
+	s.totalRequests = 0
+	s.successCount = 0
+	s.failureCount = 0
+	s.totalTokens = 0
+	s.apis = make(map[string]*apiStats)
+	s.requestsByDay = make(map[string]int64)
+	s.requestsByHour = make(map[int]int64)
+	s.tokensByDay = make(map[string]int64)
+	s.tokensByHour = make(map[int]int64)
+}
+
+func (s *RequestStatistics) recordPersistentLocked(record PersistentRecord) {
+	totalTokens := record.Detail.Tokens.TotalTokens
 	if totalTokens < 0 {
 		totalTokens = 0
 	}
 
 	s.totalRequests++
-	if detail.Failed {
+	if record.Detail.Failed {
 		s.failureCount++
 	} else {
 		s.successCount++
 	}
 	s.totalTokens += totalTokens
 
-	s.updateAPIStats(stats, modelName, detail)
+	stats, ok := s.apis[record.APIName]
+	if !ok {
+		stats = &apiStats{Models: make(map[string]*modelStats)}
+		s.apis[record.APIName] = stats
+	}
+	s.updateAPIStats(stats, record.ModelName, record.Detail)
 
-	dayKey := detail.Timestamp.Format("2006-01-02")
-	hourKey := detail.Timestamp.Hour()
+	dayKey := record.Detail.Timestamp.Format("2006-01-02")
+	hourKey := record.Detail.Timestamp.Hour()
 
 	s.requestsByDay[dayKey]++
 	s.requestsByHour[hourKey]++

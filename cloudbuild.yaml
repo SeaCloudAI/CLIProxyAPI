@@ -115,6 +115,7 @@ steps:
         PGSTORE_SCHEMA_VALUE="${_PGSTORE_SCHEMA}"
         PGSTORE_CONFIG_TABLE_VALUE="${_PGSTORE_CONFIG_TABLE}"
         PGSTORE_AUTH_TABLE_VALUE="${_PGSTORE_AUTH_TABLE}"
+        PGSTORE_USAGE_TABLE_VALUE="${_PGSTORE_USAGE_TABLE}"
         PGSTORE_LOCAL_PATH_VALUE="${_PGSTORE_LOCAL_PATH}"
 
         if [ "$${ENV_NAME}" = "develop" ] && [ -z "$${PGSTORE_ENABLED_VALUE}" ]; then
@@ -133,6 +134,9 @@ steps:
           fi
           if [ -z "$${PGSTORE_AUTH_TABLE_VALUE}" ]; then
             PGSTORE_AUTH_TABLE_VALUE="cliproxy_auth_test"
+          fi
+          if [ -z "$${PGSTORE_USAGE_TABLE_VALUE}" ]; then
+            PGSTORE_USAGE_TABLE_VALUE="cliproxy_usage_test"
           fi
           if [ -z "$${PGSTORE_LOCAL_PATH_VALUE}" ]; then
             PGSTORE_LOCAL_PATH_VALUE="/var/lib/cliproxy/develop"
@@ -157,6 +161,10 @@ steps:
             PGSTORE_AUTH_TABLE_VALUE="cliproxy_auth_$${ENV_NAME}"
           fi
 
+          if [ -z "$${PGSTORE_USAGE_TABLE_VALUE}" ]; then
+            PGSTORE_USAGE_TABLE_VALUE="cliproxy_usage_$${ENV_NAME}"
+          fi
+
           if [ -z "$${PGSTORE_LOCAL_PATH_VALUE}" ]; then
             PGSTORE_LOCAL_PATH_VALUE="/var/lib/cliproxy/$${ENV_NAME}"
           fi
@@ -165,6 +173,7 @@ steps:
           echo "  schema: $${PGSTORE_SCHEMA_VALUE}"
           echo "  config table: $${PGSTORE_CONFIG_TABLE_VALUE}"
           echo "  auth table: $${PGSTORE_AUTH_TABLE_VALUE}"
+          echo "  usage table: $${PGSTORE_USAGE_TABLE_VALUE}"
           echo "  local path: $${PGSTORE_LOCAL_PATH_VALUE}"
 
           kubectl set env deployment/${_DEPLOYMENT_NAME} \
@@ -172,6 +181,7 @@ steps:
             PGSTORE_SCHEMA="$${PGSTORE_SCHEMA_VALUE}" \
             PGSTORE_CONFIG_TABLE="$${PGSTORE_CONFIG_TABLE_VALUE}" \
             PGSTORE_AUTH_TABLE="$${PGSTORE_AUTH_TABLE_VALUE}" \
+            PGSTORE_USAGE_TABLE="$${PGSTORE_USAGE_TABLE_VALUE}" \
             PGSTORE_LOCAL_PATH="$${PGSTORE_LOCAL_PATH_VALUE}" \
             -n $${NAMESPACE}
         else
@@ -211,6 +221,7 @@ substitutions:
   _PGSTORE_SCHEMA: ""
   _PGSTORE_CONFIG_TABLE: ""
   _PGSTORE_AUTH_TABLE: ""
+  _PGSTORE_USAGE_TABLE: ""
   _PGSTORE_LOCAL_PATH: ""
 
 options:

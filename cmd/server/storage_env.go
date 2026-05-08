@@ -24,6 +24,9 @@ func resolvePostgresStoreConfig(lookupEnv func(...string) (string, bool), workin
 	if value, ok := lookupEnv("PGSTORE_AUTH_TABLE", "pgstore_auth_table"); ok {
 		cfg.AuthTable = value
 	}
+	if value, ok := lookupEnv("PGSTORE_USAGE_TABLE", "pgstore_usage_table"); ok {
+		cfg.UsageTable = value
+	}
 	if value, ok := lookupEnv("PGSTORE_LOCAL_PATH", "pgstore_local_path"); ok {
 		cfg.SpoolDir = value
 	}

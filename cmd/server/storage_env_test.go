@@ -28,6 +28,7 @@ func TestResolvePostgresStoreConfig_UsesDedicatedSchemaAndTables(t *testing.T) {
 		"PGSTORE_SCHEMA":       "cliproxy_test",
 		"PGSTORE_CONFIG_TABLE": "cliproxy_config_test",
 		"PGSTORE_AUTH_TABLE":   "cliproxy_auth_test",
+		"PGSTORE_USAGE_TABLE":  "cliproxy_usage_test",
 		"PGSTORE_LOCAL_PATH":   "/state/cliproxy",
 	}
 
@@ -53,6 +54,9 @@ func TestResolvePostgresStoreConfig_UsesDedicatedSchemaAndTables(t *testing.T) {
 	}
 	if cfg.AuthTable != env["PGSTORE_AUTH_TABLE"] {
 		t.Fatalf("expected auth table %q, got %q", env["PGSTORE_AUTH_TABLE"], cfg.AuthTable)
+	}
+	if cfg.UsageTable != env["PGSTORE_USAGE_TABLE"] {
+		t.Fatalf("expected usage table %q, got %q", env["PGSTORE_USAGE_TABLE"], cfg.UsageTable)
 	}
 	if cfg.SpoolDir != env["PGSTORE_LOCAL_PATH"] {
 		t.Fatalf("expected spool dir %q, got %q", env["PGSTORE_LOCAL_PATH"], cfg.SpoolDir)

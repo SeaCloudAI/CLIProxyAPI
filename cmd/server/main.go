@@ -242,6 +242,13 @@ func main() {
 		cfg, err = config.LoadConfigOptional(configFilePath, isCloudDeploy)
 		if err == nil {
 			cfg.AuthDir = pgStoreInst.AuthDir()
+			ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+			if errUsage := usage.ConfigurePersistence(ctx, usage.GetRequestStatistics(), pgStoreInst); errUsage != nil {
+				cancel()
+				log.Errorf("failed to restore usage statistics from postgres store: %v", errUsage)
+				return
+			}
+			cancel()
 			log.Infof("postgres-backed token store enabled, workspace path: %s", pgStoreInst.WorkDir())
 		}
 	} else if useObjectStore {
