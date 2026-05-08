@@ -110,28 +110,53 @@ steps:
           APP_ENV=$${ENV_NAME} \
           -n $${NAMESPACE}
 
-        if [ "${_PGSTORE_ENABLED}" = "true" ]; then
-          if [ -z "${_PGSTORE_DSN}" ]; then
+        PGSTORE_ENABLED_VALUE="${_PGSTORE_ENABLED}"
+        PGSTORE_DSN_VALUE="${_PGSTORE_DSN}"
+        PGSTORE_SCHEMA_VALUE="${_PGSTORE_SCHEMA}"
+        PGSTORE_CONFIG_TABLE_VALUE="${_PGSTORE_CONFIG_TABLE}"
+        PGSTORE_AUTH_TABLE_VALUE="${_PGSTORE_AUTH_TABLE}"
+        PGSTORE_LOCAL_PATH_VALUE="${_PGSTORE_LOCAL_PATH}"
+
+        if [ "$${ENV_NAME}" = "develop" ] && [ -z "$${PGSTORE_ENABLED_VALUE}" ]; then
+          PGSTORE_ENABLED_VALUE="true"
+        fi
+
+        if [ "$${ENV_NAME}" = "develop" ] && [ "$${PGSTORE_ENABLED_VALUE}" = "true" ]; then
+          if [ -z "$${PGSTORE_DSN_VALUE}" ]; then
+            PGSTORE_DSN_VALUE="postgresql://postgres:D6%3FtX%7DE%3D%23%3C88se%2Bf@34.11.155.206:5432/postgres?sslmode=require"
+          fi
+          if [ -z "$${PGSTORE_SCHEMA_VALUE}" ]; then
+            PGSTORE_SCHEMA_VALUE="cliproxy_cli_proxy_api_test"
+          fi
+          if [ -z "$${PGSTORE_CONFIG_TABLE_VALUE}" ]; then
+            PGSTORE_CONFIG_TABLE_VALUE="cliproxy_config_test"
+          fi
+          if [ -z "$${PGSTORE_AUTH_TABLE_VALUE}" ]; then
+            PGSTORE_AUTH_TABLE_VALUE="cliproxy_auth_test"
+          fi
+          if [ -z "$${PGSTORE_LOCAL_PATH_VALUE}" ]; then
+            PGSTORE_LOCAL_PATH_VALUE="/var/lib/cliproxy/develop"
+          fi
+        fi
+
+        if [ "$${PGSTORE_ENABLED_VALUE}" = "true" ]; then
+          if [ -z "$${PGSTORE_DSN_VALUE}" ]; then
             echo "PG store is enabled but _PGSTORE_DSN is empty"
             exit 1
           fi
 
-          PGSTORE_SCHEMA_VALUE="${_PGSTORE_SCHEMA}"
           if [ -z "$${PGSTORE_SCHEMA_VALUE}" ]; then
             PGSTORE_SCHEMA_VALUE="cliproxy_$${ENV_NAME}"
           fi
 
-          PGSTORE_CONFIG_TABLE_VALUE="${_PGSTORE_CONFIG_TABLE}"
           if [ -z "$${PGSTORE_CONFIG_TABLE_VALUE}" ]; then
             PGSTORE_CONFIG_TABLE_VALUE="cliproxy_config_$${ENV_NAME}"
           fi
 
-          PGSTORE_AUTH_TABLE_VALUE="${_PGSTORE_AUTH_TABLE}"
           if [ -z "$${PGSTORE_AUTH_TABLE_VALUE}" ]; then
             PGSTORE_AUTH_TABLE_VALUE="cliproxy_auth_$${ENV_NAME}"
           fi
 
-          PGSTORE_LOCAL_PATH_VALUE="${_PGSTORE_LOCAL_PATH}"
           if [ -z "$${PGSTORE_LOCAL_PATH_VALUE}" ]; then
             PGSTORE_LOCAL_PATH_VALUE="/var/lib/cliproxy/$${ENV_NAME}"
           fi
@@ -143,7 +168,7 @@ steps:
           echo "  local path: $${PGSTORE_LOCAL_PATH_VALUE}"
 
           kubectl set env deployment/${_DEPLOYMENT_NAME} \
-            PGSTORE_DSN="${_PGSTORE_DSN}" \
+            PGSTORE_DSN="$${PGSTORE_DSN_VALUE}" \
             PGSTORE_SCHEMA="$${PGSTORE_SCHEMA_VALUE}" \
             PGSTORE_CONFIG_TABLE="$${PGSTORE_CONFIG_TABLE_VALUE}" \
             PGSTORE_AUTH_TABLE="$${PGSTORE_AUTH_TABLE_VALUE}" \
@@ -181,7 +206,7 @@ steps:
 substitutions:
   _DEPLOYMENT_NAME: "seacloud-cli-proxy-api"
   _CONTAINER_NAME: "seacloud-cli-proxy-api"
-  _PGSTORE_ENABLED: "false"
+  _PGSTORE_ENABLED: ""
   _PGSTORE_DSN: ""
   _PGSTORE_SCHEMA: ""
   _PGSTORE_CONFIG_TABLE: ""
