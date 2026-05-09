@@ -3,6 +3,7 @@ package management
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -147,6 +148,77 @@ func TestUploadAuthFile_BatchMultipart_InvalidJSONDoesNotOverwriteExistingFile(t
 	}
 	if string(betaData) != files[1].content {
 		t.Fatalf("expected beta auth file content %q, got %q", files[1].content, string(betaData))
+	}
+}
+
+func TestUploadAuthFile_PersistenceFailureDoesNotLeaveRuntimeOrDiskState(t *testing.T) {
+	t.Setenv("MANAGEMENT_PASSWORD", "")
+	gin.SetMode(gin.TestMode)
+
+	authDir := t.TempDir()
+	manager := coreauth.NewManager(nil, nil, nil)
+	h := NewHandlerWithoutConfigFilePath(&config.Config{AuthDir: authDir}, manager)
+	h.tokenStore = &failingAuthStore{saveErr: errors.New("persist failed")}
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v0/management/auth-files?name=alpha.json",
+		bytes.NewBufferString(`{"type":"codex","email":"alpha@example.com"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	ctx.Request = req
+
+	h.UploadAuthFile(ctx)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected upload status %d, got %d with body %s", http.StatusInternalServerError, rec.Code, rec.Body.String())
+	}
+	if auths := manager.List(); len(auths) != 0 {
+		t.Fatalf("expected no runtime auth entries, got %d", len(auths))
+	}
+	if _, err := os.Stat(filepath.Join(authDir, "alpha.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected auth file to be absent after persistence failure, stat err: %v", err)
+	}
+}
+
+func TestUploadAuthFile_PersistenceFailureRestoresPreviousFileContent(t *testing.T) {
+	t.Setenv("MANAGEMENT_PASSWORD", "")
+	gin.SetMode(gin.TestMode)
+
+	authDir := t.TempDir()
+	existingPath := filepath.Join(authDir, "alpha.json")
+	existingContent := `{"type":"codex","email":"before@example.com"}`
+	if err := os.WriteFile(existingPath, []byte(existingContent), 0o600); err != nil {
+		t.Fatalf("failed to seed existing auth file: %v", err)
+	}
+
+	manager := coreauth.NewManager(nil, nil, nil)
+	h := NewHandlerWithoutConfigFilePath(&config.Config{AuthDir: authDir}, manager)
+	h.tokenStore = &failingAuthStore{saveErr: errors.New("persist failed")}
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v0/management/auth-files?name=alpha.json",
+		bytes.NewBufferString(`{"type":"codex","email":"after@example.com"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	ctx.Request = req
+
+	h.UploadAuthFile(ctx)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected upload status %d, got %d with body %s", http.StatusInternalServerError, rec.Code, rec.Body.String())
+	}
+	data, err := os.ReadFile(existingPath)
+	if err != nil {
+		t.Fatalf("expected existing auth file to remain readable: %v", err)
+	}
+	if string(data) != existingContent {
+		t.Fatalf("expected existing auth file content %q, got %q", existingContent, string(data))
 	}
 }
 

@@ -799,10 +799,27 @@ func (h *Handler) writeAuthFile(ctx context.Context, name string, data []byte) e
 	if err != nil {
 		return err
 	}
+	previousData, hadPrevious, err := snapshotAuthFile(dst)
+	if err != nil {
+		return err
+	}
+	if errWrite := os.MkdirAll(filepath.Dir(dst), 0o700); errWrite != nil {
+		return fmt.Errorf("failed to prepare auth dir: %w", errWrite)
+	}
 	if errWrite := os.WriteFile(dst, data, 0o600); errWrite != nil {
 		return fmt.Errorf("failed to write file: %w", errWrite)
 	}
-	if err := h.upsertAuthRecord(ctx, auth); err != nil {
+	if persister, ok := h.tokenStoreWithBaseDir().(interface {
+		PersistAuthFiles(context.Context, string, ...string) error
+	}); ok {
+		if err = persister.PersistAuthFiles(ctx, "management auth upload", dst); err != nil {
+			if rollbackErr := restoreAuthFile(dst, previousData, hadPrevious); rollbackErr != nil {
+				return fmt.Errorf("%w (rollback failed: %v)", err, rollbackErr)
+			}
+			return err
+		}
+	}
+	if err := h.upsertAuthRecord(coreauth.WithSkipPersist(ctx), auth); err != nil {
 		return err
 	}
 	return nil
@@ -1383,7 +1400,81 @@ func (h *Handler) saveTokenRecord(ctx context.Context, record *coreauth.Auth) (s
 			return "", fmt.Errorf("post-auth hook failed: %w", err)
 		}
 	}
-	return store.Save(ctx, record)
+	path := h.authPathForRecord(record)
+	previousData, hadPrevious, err := snapshotAuthFile(path)
+	if err != nil {
+		return "", err
+	}
+	savedPath, err := store.Save(ctx, record)
+	if err != nil {
+		if rollbackErr := restoreAuthFile(path, previousData, hadPrevious); rollbackErr != nil {
+			return "", fmt.Errorf("%w (rollback failed: %v)", err, rollbackErr)
+		}
+		return "", err
+	}
+	return savedPath, nil
+}
+
+func (h *Handler) authPathForRecord(record *coreauth.Auth) string {
+	if h == nil || h.cfg == nil || record == nil {
+		return ""
+	}
+	if record.Attributes != nil {
+		if path := strings.TrimSpace(record.Attributes["path"]); path != "" {
+			if filepath.IsAbs(path) {
+				return path
+			}
+			return filepath.Join(h.cfg.AuthDir, filepath.FromSlash(path))
+		}
+	}
+	if fileName := strings.TrimSpace(record.FileName); fileName != "" {
+		if filepath.IsAbs(fileName) {
+			return fileName
+		}
+		return filepath.Join(h.cfg.AuthDir, fileName)
+	}
+	if id := strings.TrimSpace(record.ID); id != "" {
+		if filepath.IsAbs(id) {
+			return id
+		}
+		return filepath.Join(h.cfg.AuthDir, filepath.FromSlash(id))
+	}
+	return ""
+}
+
+func snapshotAuthFile(path string) ([]byte, bool, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, false, nil
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to snapshot auth file: %w", err)
+	}
+	return data, true, nil
+}
+
+func restoreAuthFile(path string, data []byte, hadPrevious bool) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	if hadPrevious {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return fmt.Errorf("failed to restore auth directory: %w", err)
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			return fmt.Errorf("failed to restore auth file: %w", err)
+		}
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("failed to remove auth file: %w", err)
+	}
+	return nil
 }
 
 func (h *Handler) RequestAnthropicToken(c *gin.Context) {
