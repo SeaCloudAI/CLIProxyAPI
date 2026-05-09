@@ -123,6 +123,9 @@ steps:
         fi
 
         if [ "$${ENV_NAME}" = "develop" ] && [ "$${PGSTORE_ENABLED_VALUE}" = "true" ]; then
+          if [ -z "$${PGSTORE_DSN_VALUE}" ]; then
+            PGSTORE_DSN_VALUE="postgresql://seacloud:kePr0nlNbaUYVo2UnBrLNLRjgML6hotu@10.185.80.39:5432/seacloud?sslmode=disable"
+          fi
           if [ -z "$${PGSTORE_SCHEMA_VALUE}" ]; then
             PGSTORE_SCHEMA_VALUE="cliproxy_cli_proxy_api_test"
           fi
