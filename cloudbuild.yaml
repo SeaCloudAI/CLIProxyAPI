@@ -123,9 +123,6 @@ steps:
         fi
 
         if [ "$${ENV_NAME}" = "develop" ] && [ "$${PGSTORE_ENABLED_VALUE}" = "true" ]; then
-          if [ -z "$${PGSTORE_DSN_VALUE}" ]; then
-            PGSTORE_DSN_VALUE="postgresql://postgres:D6%3FtX%7DE%3D%23%3C88se%2Bf@10.94.112.17:5432/postgres?sslmode=prefer"
-          fi
           if [ -z "$${PGSTORE_SCHEMA_VALUE}" ]; then
             PGSTORE_SCHEMA_VALUE="cliproxy_cli_proxy_api_test"
           fi
