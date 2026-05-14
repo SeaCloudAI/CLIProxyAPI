@@ -263,12 +263,16 @@ openai-compatibility:
         alias: "claude-sonnet-4-5"
       - name: "claude-sonnet-4"
         alias: "claude-sonnet-4"
+      - name: "claude-sonnet-4.6"
+        alias: "claude-sonnet-4-6"
       - name: "claude-haiku-4-5"
         alias: "claude-haiku-4-5"
       - name: "claude-opus-4-5"
         alias: "claude-opus-4-5"
       - name: "claude-opus-4.6"
         alias: "claude-opus-4-6"
+      - name: "claude-opus-4.7"
+        alias: "claude-opus-4-7"
 #   - name: "openrouter" # The name of the provider; it will be used in the user agent and other places.
 #     disabled: false # optional: set to true to disable this provider without removing it
 #     prefix: "test" # optional: require calls like "test/kimi-k2" to target this provider's credentials
