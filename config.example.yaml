@@ -250,7 +250,23 @@ nonstream-keepalive-interval: 0
 #   beta-features: "multi_agent"
 
 # OpenAI compatibility providers
-# openai-compatibility:
+openai-compatibility:
+  - name: "kiro"
+    disabled: false
+    prefix: "kiro"
+    base-url: "http://seacloud-kiro-gateway.seacloud-develop.svc.cluster.local:8080/v1"
+    api-key-entries:
+      - api-key: "05656f8eadbdfca8ee92358ea846cdb748de34049d07985bc5e4f086722b4258"
+        proxy-url: "direct"
+    models:
+      - name: "claude-sonnet-4-5"
+        alias: "claude-sonnet-4-5"
+      - name: "claude-sonnet-4"
+        alias: "claude-sonnet-4"
+      - name: "claude-haiku-4-5"
+        alias: "claude-haiku-4-5"
+      - name: "claude-opus-4-5"
+        alias: "claude-opus-4-5"
 #   - name: "openrouter" # The name of the provider; it will be used in the user agent and other places.
 #     disabled: false # optional: set to true to disable this provider without removing it
 #     prefix: "test" # optional: require calls like "test/kimi-k2" to target this provider's credentials
